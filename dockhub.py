@@ -111,8 +111,14 @@ def add_team_to_repo(auth_header, dh_team, dh_repo, group_id):
 @click.command()
 @click.option('-r', '--dh_repo', default=None, help='DockerHub repo you want to add the team to with r/w access', required=True)
 @click.option('-t', '--dh_team', default=None, help='DockerHub team you want to add a user to', required=True)
-@click.option('-u', '--dh_user', default=None, help='DockerHub user you want to add to the team', required=True)
+@click.option('-u', '--dh_user', default=None, help='DockerHub user you want to add to the team (most likely, mzcs<something>)', required=True)
 def main(dh_repo, dh_team, dh_user):
+    """
+    For this script to work properly, You'll need to export your DockerHub Username and
+    password (DH_USERNAME/DH_PASSWORD) in your ENV.
+
+    Be sure to have created both your Team and your repo prior to running this script!
+    """
     token = get_auth_token()
     auth_header = {'Authorization': f'JWT {token}'}
     group_id = get_team(auth_header, dh_team)
