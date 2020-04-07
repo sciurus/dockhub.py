@@ -15,29 +15,37 @@ def die(msg=None, exception=None):
 
 def get_auth_token():
     docker_api_url = f'{dockerhub_url}/users/login/'
-    username = getenv('DH_USERNAME')
-    if username is not None:
-        password = getenv('DH_PASSWORD')
-        if password is not None:
-            auth = {"username": username, "password": password}
-            try:
-                auth_request = requests.post(docker_api_url, headers=content_header, json=auth)
-                if auth_request.status_code == 200:
-                    return auth_request.json()['token']
-                else:
-                    die('Non-200 response received from DockerHub. Verify your credentials and try again')
-            except requests.ConnectionError as e:
-                die('Unable to connect to dockerhub:', e)
-            except requests.HTTPError as e:
-                die('HTTPError:', e)
-            except requests.Timeout as e:
-                die('Timeout error:', e)
-            except requests.TooManyRedirects as e:
-                die('Too many redirects encountered:', e)
-        else:
-            die('For security, you must set your password as the variable DH_PASSWORD in your ENV')
+    token = getenv('DH_TOKEN')
+    if token is not None:
+        docker_auth_url = 'https://auth.docker.io/token?service=registry.docker.io'
+        token_request = requests.get(f'{docker_auth_url}')
+        if token_request.status_code == 200:
+            return token_request.json()['token']
+
     else:
-        die('For security, you must set your username as the variable DH_USERNAME in your ENV')
+        username = getenv('DH_USERNAME')
+        if username is not None:
+            password = getenv('DH_PASSWORD')
+            if password is not None:
+                auth = {"username": username, "password": password}
+                try:
+                    auth_request = requests.post(docker_api_url, headers=content_header, json=auth)
+                    if auth_request.status_code == 200:
+                        return auth_request.json()['token']
+                    else:
+                        die('Non-200 response received from DockerHub. Verify your credentials and try again')
+                except requests.ConnectionError as e:
+                    die('Unable to connect to dockerhub:', e)
+                except requests.HTTPError as e:
+                    die('HTTPError:', e)
+                except requests.Timeout as e:
+                    die('Timeout error:', e)
+                except requests.TooManyRedirects as e:
+                    die('Too many redirects encountered:', e)
+            else:
+                die('For security, you must set your password as the variable DH_PASSWORD in your ENV')
+        else:
+            die('For security, you must set your username as the variable DH_USERNAME in your ENV')
 
 
 def get_team(auth_header, dh_team):
@@ -114,10 +122,23 @@ def add_team_to_repo(auth_header, dh_team, dh_repo, group_id):
 @click.option('-u', '--dh_user', default=None, help='DockerHub user you want to add to the team (most likely, mzcs<something>)', required=True)
 def main(dh_repo, dh_team, dh_user):
     """
-    For this script to work properly, You'll need to export your DockerHub Username and
-    password (DH_USERNAME/DH_PASSWORD) in your ENV.
+    For this script to work properly, you need to have an auth token for DockerHub.
 
-    Be sure to have created both your Team and your repo prior to running this script!
+    If you have one, export it in your ENV as DH_TOKEN
+
+    You can get a token for yourself @ https://hub.docker.com/settings/security
+
+    If you don't have one, or don't want one, you'll need to export your DockerHub
+    Username and password (DH_USERNAME/DH_PASSWORD) in your ENV.
+
+    Tokens are preferred over username and password combos.
+
+    *** Be sure to have created: ***
+        1. Your CircleCI user
+        2. Your DockerHub team
+        3. Your DockerHub repo
+
+        prior to running this script!
     """
     token = get_auth_token()
     auth_header = {'Authorization': f'JWT {token}'}
