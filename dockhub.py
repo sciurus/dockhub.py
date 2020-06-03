@@ -43,7 +43,7 @@ def get_auth_token():
 def get_team(auth_header, dh_team):
     docker_api_url = f'{dockerhub_url}/orgs/mozilla/groups/{dh_team}'
     try:
-        team = requests.post(docker_api_url, headers=auth_header)
+        team = requests.get(docker_api_url, headers=auth_header)
         if team.status_code == 200:
             return team.json()['id']
         else:
@@ -67,10 +67,16 @@ def add_user_to_team(auth_header, dh_user, dh_team, group_id):
                                  headers=add_user_headers,
                                  json=add_user_json)
         if add_user.status_code == 200:
-            if add_user.json()[0]['username'] == dh_user:
-                print(f'Added {dh_user} to {dh_team}')
+            # Ensure the user has been added by pulling the list of members
+            verify = requests.get(docker_api_url, headers=auth_header)
+            if verify.status_code == 200:
+                # https://stackoverflow.com/questions/8653516/python-list-of-dictionaries-search
+                if next((x for x in verify.json() if x['username'] == f'{dh_user}'), None):
+                    print(f'Added {dh_user} to {dh_team}')
+                else:
+                    die(f'Unknown error adding {dh_user} to {dh_team}')
             else:
-                die(f'Unknown error adding {dh_user} to {dh_team}')
+                die(f'Could not verify {dh_user} has been added to {dh_team}. Caveat emptor!')
         else:
             die('Non-200 response from DockerHub. Review all the things and try again')
     except requests.ConnectionError as e:
@@ -109,7 +115,7 @@ def add_team_to_repo(auth_header, dh_team, dh_repo, group_id):
 
 
 @click.command()
-@click.option('-r', '--dh_repo', default=None, help='DockerHub repo you want to add the team to with r/w access', required=True)
+@click.option('-r', '--dh_repo', default=None, help='DockerHub repo you want to add the team to with r/w access', required=False)
 @click.option('-t', '--dh_team', default=None, help='DockerHub team you want to add a user to', required=True)
 @click.option('-u', '--dh_user', default=None, help='DockerHub user you want to add to the team (most likely, mzcs<something>)', required=True)
 def main(dh_repo, dh_team, dh_user):
@@ -123,9 +129,11 @@ def main(dh_repo, dh_team, dh_user):
     auth_header = {'Authorization': f'JWT {token}'}
     group_id = get_team(auth_header, dh_team)
     add_user_to_team(auth_header, dh_user, dh_team, group_id)
+    if dh_repo is not None:
+        add_team_to_repo(auth_header, dh_team, dh_repo, group_id)
 
 
 if __name__ == "__main__":
     dockerhub_url = 'https://hub.docker.com/v2'
-    content_header = {'Content-Type': 'application/json'}
+    content_header = {'Content-Type': 'application/json', 'charset': 'utf-8'}
     main()
