@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-import requests
-import click
+
 import json
 from os import getenv
 from sys import exit
+
+import click
+import requests
 
 
 def die(msg=None, exception=None):
