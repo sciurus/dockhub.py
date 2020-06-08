@@ -1,226 +1,182 @@
 #!/usr/bin/env python3
 
+from functools import wraps
 import json
 from os import getenv
-from sys import exit
+import sys
 
 import click
 import requests
 
 
-def die(msg=None, exception=None):
-    if msg is not None:
-        print(f'{msg}')
-    if exception is not None:
-        print(f'{exception}')
-    exit(1)
+CONTENT_HEADER = {'Content-Type': 'application/json', 'charset': 'utf-8'}
+DOCKERHUB_URL = 'https://hub.docker.com/v2'
 
 
+def handle_http_errors(fun):
+    """Wrap function with exception handling for common HTTP errors."""
+    @wraps(fun)
+    def _handle_http_errors(*args, **kwargs):
+        try:
+            return fun(*args, **kwargs)
+
+        except requests.ConnectionError as exc:
+            raise click.ClickException(f'Unable to connect to dockerhub: {exc}')
+        except requests.HTTPError as exc:
+            raise click.ClickException(f'HTTPError: {exc}')
+        except requests.Timeout as exc:
+            raise click.ClickException(f'Timeout: {exc}')
+        except requests.TooManyRedirects as exc:
+            raise click.ClickException(f'Too many redirects encountered: {exc}')
+
+    return _handle_http_errors
+
+
+def die(msg):
+    """Print a message and exit with 1 status code."""
+    click.echo(click.style(msg, fg="red"))
+    sys.exit(1)
+
+
+@handle_http_errors
 def get_auth_token():
-    docker_api_url = f'{dockerhub_url}/users/login/'
+    docker_api_url = f'{DOCKERHUB_URL}/users/login/'
     username = getenv('DH_USERNAME')
     if username is not None:
         password = getenv('DH_PASSWORD')
         if password is not None:
             auth = {"username": username, "password": password}
-            try:
-                auth_request = requests.post(docker_api_url, headers=content_header, json=auth)
-                if auth_request.status_code == 200:
-                    return auth_request.json()['token']
-                else:
-                    die('Non-200 response received from DockerHub. Verify your credentials and try again')
-            except requests.ConnectionError as e:
-                die('Unable to connect to dockerhub:', e)
-            except requests.HTTPError as e:
-                die('HTTPError:', e)
-            except requests.Timeout as e:
-                die('Timeout error:', e)
-            except requests.TooManyRedirects as e:
-                die('Too many redirects encountered:', e)
+            auth_request = requests.post(docker_api_url, headers=CONTENT_HEADER, json=auth)
+            if auth_request.status_code == 200:
+                return auth_request.json()['token']
+            else:
+                die('Non-200 response received from DockerHub. Verify your credentials and try again')
         else:
             die('For security, you must set your password as the variable DH_PASSWORD in your ENV')
     else:
         die('For security, you must set your username as the variable DH_USERNAME in your ENV')
 
 
+@handle_http_errors
 def get_group_id(auth_header, dh_group):
     # We need the group id to add the group to the repo later on
-    docker_api_url = f'{dockerhub_url}/orgs/mozilla/groups/{dh_group}'
-    try:
-        group = requests.get(docker_api_url, headers=auth_header)
-        if group.status_code == 200:
-            return group.json()['id']
-        else:
-            die("Non-200 response form DockerHub. Verify your group name and try agin")
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
+    docker_api_url = f'{DOCKERHUB_URL}/orgs/mozilla/groups/{dh_group}'
+    group = requests.get(docker_api_url, headers=auth_header)
+    if group.status_code == 200:
+        return group.json()['id']
+    else:
+        die("Non-200 response form DockerHub. Verify your group name and try agin")
 
 
+@handle_http_errors
 def dump_group_info(auth_header, dh_group):
-    group_url = f'{dockerhub_url}/orgs/mozilla/groups/{dh_group}'
+    group_url = f'{DOCKERHUB_URL}/orgs/mozilla/groups/{dh_group}'
     group_members_url = f'{group_url}/members'
-    try:
-        group = requests.get(group_url, headers=auth_header)
-        if group.status_code == 200:
-            print(f'group information for {dh_group}')
-            print(json.dumps(group.json(), indent=2, sort_keys=True))
-        else:
-            die("Non-200 response form DockerHub. Verify your group name and try agin")
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
-    try:
-        members = requests.get(group_members_url, headers=auth_header)
-        if group.status_code == 200:
-            print(f'Membership information for {dh_group}')
-            print(json.dumps(members.json(), indent=2, sort_keys=True))
-        else:
-            die("Non-200 response form DockerHub. Verify your group name and try agin")
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
+
+    group = requests.get(group_url, headers=auth_header)
+    if group.status_code == 200:
+        print(f'group information for {dh_group}')
+        print(json.dumps(group.json(), indent=2, sort_keys=True))
+    else:
+        die("Non-200 response form DockerHub. Verify your group name and try agin")
+
+    members = requests.get(group_members_url, headers=auth_header)
+    if group.status_code == 200:
+        print(f'Membership information for {dh_group}')
+        print(json.dumps(members.json(), indent=2, sort_keys=True))
+    else:
+        die("Non-200 response form DockerHub. Verify your group name and try agin")
 
 
+@handle_http_errors
 def add_user_to_group(auth_header, dh_user, dh_group, group_id):
-    group_members_url = f'{dockerhub_url}/orgs/mozilla/groups/{dh_group}/members/'
-    additional_headers = {**auth_header, **content_header}
+    group_members_url = f'{DOCKERHUB_URL}/orgs/mozilla/groups/{dh_group}/members/'
+    additional_headers = {**auth_header, **CONTENT_HEADER}
     add_user_json = {"member": dh_user}
-    try:
-        add_user = requests.post(group_members_url,
-                                 headers=additional_headers,
-                                 json=add_user_json)
-        if add_user.status_code == 200:
-            # Ensure the user has been added by pulling the list of members
-            members = requests.get(group_members_url, headers=auth_header)
-            if members.status_code == 200:
-                # https://stackoverflow.com/questions/8653516/python-list-of-dictionaries-search
-                if next((x for x in members.json() if x['username'] == f'{dh_user}'), None):
-                    print(f'Added {dh_user} to {dh_group}')
-                else:
-                    die(f'Unknown error adding {dh_user} to {dh_group}')
+
+    add_user = requests.post(group_members_url,
+                             headers=additional_headers,
+                             json=add_user_json)
+    if add_user.status_code == 200:
+        # Ensure the user has been added by pulling the list of members
+        members = requests.get(group_members_url, headers=auth_header)
+        if members.status_code == 200:
+            # https://stackoverflow.com/questions/8653516/python-list-of-dictionaries-search
+            if next((x for x in members.json() if x['username'] == f'{dh_user}'), None):
+                print(f'Added {dh_user} to {dh_group}')
             else:
-                die(f'Could not verify {dh_user} has been added to {dh_group}. Caveat emptor!')
+                die(f'Unknown error adding {dh_user} to {dh_group}')
         else:
-            die('Non-200 response from DockerHub. Review all the things and try again')
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
+            die(f'Could not verify {dh_user} has been added to {dh_group}. Caveat emptor!')
+    else:
+        die('Non-200 response from DockerHub. Review all the things and try again')
 
 
+@handle_http_errors
 def dump_user_info(auth_header, dh_user):
-    user_url = f'{dockerhub_url}/users/{dh_user}'
-    try:
-        user = requests.get(user_url, headers=auth_header)
-        if user.status_code == 200:
-            print(f'User information for {dh_user}')
-            print(json.dumps(user.json(), indent=2, sort_keys=True))
-        else:
-            die("Non-200 response form DockerHub. Verify the specified user name and try agin")
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
+    user_url = f'{DOCKERHUB_URL}/users/{dh_user}'
+
+    user = requests.get(user_url, headers=auth_header)
+    if user.status_code == 200:
+        print(f'User information for {dh_user}')
+        print(json.dumps(user.json(), indent=2, sort_keys=True))
+    else:
+        die("Non-200 response form DockerHub. Verify the specified user name and try agin")
 
 
+@handle_http_errors
 def remove_user_from_group(auth_header, dh_user, dh_group):
-    group_members_url = f'{dockerhub_url}/orgs/mozilla/groups/{dh_group}/members'
-    user_group_members_url = f'{dockerhub_url}/orgs/mozilla/groups/{dh_group}/members/{dh_user}'
-    additional_headers = {**auth_header, **content_header}
-    try:
-        removed_user = requests.delete(user_group_members_url, headers=additional_headers)
-        if removed_user.status_code == 204:
-            members = requests.get(group_members_url, headers=auth_header)
-            if members.status_code == 200:
-                # https://stackoverflow.com/questions/8653516/python-list-of-dictionaries-search
-                if next((x for x in members.json() if x['username'] == f'{dh_user}'), None):
-                    die(f'Unknown error removing {dh_user} from {dh_group}')
-                else:
-                    print(f'Removed {dh_user} from {dh_group}')
+    group_members_url = f'{DOCKERHUB_URL}/orgs/mozilla/groups/{dh_group}/members'
+    user_group_members_url = f'{DOCKERHUB_URL}/orgs/mozilla/groups/{dh_group}/members/{dh_user}'
+    additional_headers = {**auth_header, **CONTENT_HEADER}
+
+    removed_user = requests.delete(user_group_members_url, headers=additional_headers)
+    if removed_user.status_code == 204:
+        members = requests.get(group_members_url, headers=auth_header)
+        if members.status_code == 200:
+            # https://stackoverflow.com/questions/8653516/python-list-of-dictionaries-search
+            if next((x for x in members.json() if x['username'] == f'{dh_user}'), None):
+                die(f'Unknown error removing {dh_user} from {dh_group}')
             else:
-                die(f'Could not verify {dh_user} has been removed from {dh_group}. Caveat emptor!')
+                print(f'Removed {dh_user} from {dh_group}')
         else:
-            die("Non-200 response form DockerHub. I give up.")
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
+            die(f'Could not verify {dh_user} has been removed from {dh_group}. Caveat emptor!')
+    else:
+        die("Non-200 response form DockerHub. I give up.")
 
 
+@handle_http_errors
 def add_group_to_repo(auth_header, dh_group, dh_repo, group_id):
-    docker_api_url = f'{dockerhub_url}/repositories/mozilla/{dh_repo}/groups/'
-    additional_headers = {**auth_header, **content_header}
+    docker_api_url = f'{DOCKERHUB_URL}/repositories/mozilla/{dh_repo}/groups/'
+    additional_headers = {**auth_header, **CONTENT_HEADER}
     add_group_json = {'group_id': group_id, 'permission': 'write'}
-    try:
-        add_group = requests.post(docker_api_url,
-                                  headers=additional_headers,
-                                  json=add_group_json)
-        if add_group.status_code == 200:
-            if add_group.json()[0]['group_id'] == group_id:
-                print(f'Granted {dh_group} write access to {dh_repo}')
-            else:
-                die(f'Unknown error adding {dh_group} to {dh_repo}')
+
+    add_group = requests.post(docker_api_url,
+                              headers=additional_headers,
+                              json=add_group_json)
+    if add_group.status_code == 200:
+        if add_group.json()[0]['group_id'] == group_id:
+            print(f'Granted {dh_group} write access to {dh_repo}')
         else:
-            die('Non-200 response from DockerHub. Review all the things and try again')
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
+            die(f'Unknown error adding {dh_group} to {dh_repo}')
+    else:
+        die('Non-200 response from DockerHub. Review all the things and try again')
 
 
+@handle_http_errors
 def dump_repo_info(auth_header, dh_repo):
     # We're only gonna dump permissions and basic stats for the repo
-    repo_url = f'{dockerhub_url}/repositories/mozilla/{dh_repo}'
+    repo_url = f'{DOCKERHUB_URL}/repositories/mozilla/{dh_repo}'
     repo_permissions_url = f'{repo_url}/groups/'
-    try:
-        repo = requests.get(repo_url, headers=auth_header)
-        repo_perms = requests.get(repo_permissions_url, headers=auth_header)
-        if repo.status_code == 200 and repo_perms.status_code == 200:
-            print(f'Repo information for {dh_repo}')
-            r = {**repo.json(), **repo_perms.json()}
-            print(json.dumps(r, indent=2, sort_keys=True))
-        else:
-            die("Non-200 response form DockerHub. Verify the specified repo name and try agin")
-    except requests.ConnectionError as e:
-        die('Unable to connect to dockerhub:', e)
-    except requests.HTTPError as e:
-        die('HTTPError:', e)
-    except requests.Timeout as e:
-        die('Timeout error:', e)
-    except requests.TooManyRedirects as e:
-        die('Too many redirects encountered:', e)
+
+    repo = requests.get(repo_url, headers=auth_header)
+    repo_perms = requests.get(repo_permissions_url, headers=auth_header)
+    if repo.status_code == 200 and repo_perms.status_code == 200:
+        print(f'Repo information for {dh_repo}')
+        r = {**repo.json(), **repo_perms.json()}
+        print(json.dumps(r, indent=2, sort_keys=True))
+    else:
+        die("Non-200 response form DockerHub. Verify the specified repo name and try agin")
 
 
 def remove_group_from_repo(auth_header, dh_group):
@@ -271,6 +227,4 @@ def main(dh_repo, dh_group, dh_user, action, force):
 
 
 if __name__ == "__main__":
-    dockerhub_url = 'https://hub.docker.com/v2'
-    content_header = {'Content-Type': 'application/json', 'charset': 'utf-8'}
     main()
