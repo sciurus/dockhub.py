@@ -3,17 +3,15 @@
 from setuptools import setup
 
 
-def get_requirements(fn):
-    with open(fn, "r") as fp:
-        return [req.strip() for req in fp.readlines()]
-
-
 setup(
     name='dockhub',
     author='ckolos',
     version='1.0.0',
     url='https://github.com/ckolos/dockhub.py/',
-    install_requires=get_requirements("requirements.txt"),
+    install_requires=[
+        'requests<3.0.0',
+        'click<8.0.0'
+    ],
     license='MPLv2',
     entry_points="""
     [console_scripts]
