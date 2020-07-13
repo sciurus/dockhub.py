@@ -41,20 +41,20 @@ def die(msg):
 @handle_http_errors
 def get_auth_token():
     docker_api_url = f'{DOCKERHUB_URL}/users/login/'
-    username = getenv('DH_USERNAME')
-    if username is not None:
-        password = getenv('DH_PASSWORD')
-        if password is not None:
-            auth = {"username": username, "password": password}
-            auth_request = requests.post(docker_api_url, headers=CONTENT_HEADER, json=auth)
-            if auth_request.status_code == 200:
-                return auth_request.json()['token']
-            else:
-                die('Non-200 response received from DockerHub. Verify your credentials and try again')
-        else:
-            die('For security, you must set your password as the variable DH_PASSWORD in your ENV')
-    else:
+    username = getenv('DH_USERNAME', '').strip()
+    if not username:
         die('For security, you must set your username as the variable DH_USERNAME in your ENV')
+
+    password = getenv('DH_PASSWORD', '').strip()
+    if not password:
+        die('For security, you must set your password as the variable DH_PASSWORD in your ENV')
+
+    auth = {"username": username, "password": password}
+    auth_request = requests.post(docker_api_url, headers=CONTENT_HEADER, json=auth)
+    if auth_request.status_code == 200:
+        return auth_request.json()['token']
+    else:
+        die('Non-200 response received from DockerHub. Verify your credentials and try again')
 
 
 @handle_http_errors
@@ -212,8 +212,8 @@ def main(dh_repo, dh_group, dh_user, action, force):
             dump_user_info(auth_header, dh_user)
         if dh_repo is not None:
             dump_repo_info(auth_header, dh_repo)
-        exit(0)
-    if action == "add" or action == "remove":
+
+    elif action == "add" or action == "remove":
         group_id = get_group_id(auth_header, dh_group)
         if action == "add":
             add_user_to_group(auth_header, dh_user, dh_group, group_id)

@@ -18,7 +18,7 @@ it should be quite adaptable to anyone else's needs.
   1. Create virtualenv (or whatever you prefer for I-downloaded-it-from-the-internet code)
   1. Activate your venv
   1. cd \<checkout dir\>
-  1. run `pip install -r requirements.txt`
+  1. run `pip install .`
 
 ## Usage:
 
@@ -43,3 +43,13 @@ it should be quite adaptable to anyone else's needs.
    `# ./dockhub.py --action remove --dh_user <user name> --dh_group \<group name\>`
 
    Removes \<user name\> from \<group name\>
+
+## For development:
+
+1. Install dev requirements:
+
+   `$ pip install -r requirements-dev.txt`
+
+1. Run tests:
+
+   `$ pytest`
