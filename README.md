@@ -26,21 +26,21 @@ it should be quite adaptable to anyone else's needs.
 
 1. Sample uses:
 
-   `$ ./dockhub.py --action add --dh_user <dockerhub username> --dh_repo <dockerhub repo name> --dh_group <dockerhub group>`
+   `$ dockhub --action add --dh_user <dockerhub username> --dh_repo <dockerhub repo name> --dh_group <dockerhub group>`
 
    Add \<dockerhub username\> to the \<dockerhub group\> and then grant that group r+w permissions to \<dockerhub repo name\>
 
-   `$./dockhub.py --action list --dh_repo <repo name>`
+   `$dockhub --action list --dh_repo <repo name>`
 
    Display group membership and permissions for \<repo name\>
 
-   `$./dockhub.py --action add --dh_user <user name> --dh_group <group name>`
+   `$dockhub --action add --dh_user <user name> --dh_group <group name>`
 
    Add \<user name\> to \<group name\>
 
    Finally, you can also remove users from groups
 
-   `# ./dockhub.py --action remove --dh_user <user name> --dh_group \<group name\>`
+   `$ dockhub --action remove --dh_user <user name> --dh_group \<group name\>`
 
    Removes \<user name\> from \<group name\>
 

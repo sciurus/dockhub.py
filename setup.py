@@ -13,6 +13,7 @@ setup(
         'click<8.0.0'
     ],
     license='MPLv2',
+    packages=['dockhub'],
     entry_points="""
     [console_scripts]
     dockhub=dockhub:main
